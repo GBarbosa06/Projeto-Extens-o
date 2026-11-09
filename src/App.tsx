@@ -42,7 +42,11 @@ const MainApp: React.FC = () => {
       setMovements(userMovements);
       setSettings(userSettings);
     } else {
-      // In guest/demo mode, provide a friendly initial sample so users/evaluators see features immediately
+      // In guest/demo mode or after logout, reset movements and settings
+      setMovements([]);
+      setSettings(DEFAULT_STORE_SETTINGS);
+
+      // Provide a friendly initial sample so users/evaluators see features immediately
       const initialSample: Product[] = [
         {
           id: 'demo-1',

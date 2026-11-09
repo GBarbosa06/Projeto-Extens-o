@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isLowStock, formatCurrency, filterProducts } from '../services/productService';
+import { isLowStock, formatCurrency, filterProducts, parseBrazilianNumber } from '../services/productService';
 import { Product } from '../types';
 
 describe('Product Service Helpers', () => {
@@ -12,6 +12,14 @@ describe('Product Service Helpers', () => {
   it('formats currency in Brazilian standard', () => {
     expect(formatCurrency(59.9)).toContain('59,90');
     expect(formatCurrency(0)).toContain('0,00');
+  });
+
+  it('parses brazilian numbers with thousand dots, commas and R$ prefixes', () => {
+    expect(parseBrazilianNumber('1.250,50')).toBe(1250.5);
+    expect(parseBrazilianNumber('1.000')).toBe(1000);
+    expect(parseBrazilianNumber('R$ 49,90')).toBe(49.9);
+    expect(parseBrazilianNumber('2,5')).toBe(2.5);
+    expect(parseBrazilianNumber(-10)).toBe(0);
   });
 
   it('filters products by query and stock status', () => {

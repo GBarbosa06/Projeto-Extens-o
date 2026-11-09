@@ -23,6 +23,21 @@ export const formatCurrency = (value: number): string => {
   }).format(value || 0);
 };
 
+export const parseBrazilianNumber = (value: string | number): number => {
+  if (typeof value === 'number') return isNaN(value) ? 0 : Math.max(0, value);
+  if (!value) return 0;
+  let clean = String(value).replace(/[R$\s]/g, '').trim();
+
+  if (clean.includes(',')) {
+    clean = clean.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(clean)) {
+    clean = clean.replace(/\./g, '');
+  }
+
+  const parsed = parseFloat(clean);
+  return isNaN(parsed) ? 0 : Math.max(0, parsed);
+};
+
 export const filterProducts = (
   products: Product[],
   searchQuery: string,

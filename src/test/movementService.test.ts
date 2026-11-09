@@ -19,4 +19,9 @@ describe('Stock Movement Logic', () => {
     expect(result.newQuantity).toBe(15);
     expect(result.isNegative).toBe(false);
   });
+
+  it('avoids floating point artifacts with fractional quantities', () => {
+    const result = calculateNewStock(10, 2.1, 'OUT');
+    expect(result.newQuantity).toBe(7.9);
+  });
 });

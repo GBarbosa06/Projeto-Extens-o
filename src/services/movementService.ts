@@ -20,7 +20,8 @@ export const calculateNewStock = (
   type: MovementType
 ): CalculatedStockResult => {
   const delta = type === 'IN' ? movementQuantity : -movementQuantity;
-  const newQuantity = currentQuantity + delta;
+  const raw = currentQuantity + delta;
+  const newQuantity = Math.round(raw * 10000) / 10000;
   return {
     newQuantity,
     isNegative: newQuantity < 0,

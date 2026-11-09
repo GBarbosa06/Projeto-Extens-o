@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { CustomField, Product } from '../../types';
 import { X, Package, Save } from 'lucide-react';
+import { parseBrazilianNumber } from '../../services/productService';
+import { sanitizeCustomFieldValue } from '../../services/settingsService';
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -64,16 +66,23 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
     setSaving(true);
     try {
+      const sanitizedCustom: Record<string, any> = {};
+      for (const field of customFields) {
+        if (customFieldValues[field.id] !== undefined) {
+          sanitizedCustom[field.id] = sanitizeCustomFieldValue(field, customFieldValues[field.id]);
+        }
+      }
+
       await onSave({
         id: productToEdit?.id,
         name: name.trim(),
         sku: sku.trim(),
         category: category.trim(),
-        costPrice: parseFloat(costPrice.replace(',', '.')) || 0,
-        salePrice: parseFloat(salePrice.replace(',', '.')) || 0,
-        quantity: parseFloat(quantity.replace(',', '.')) || 0,
-        minQuantity: parseFloat(minQuantity.replace(',', '.')) || 0,
-        customFieldValues,
+        costPrice: parseBrazilianNumber(costPrice),
+        salePrice: parseBrazilianNumber(salePrice),
+        quantity: parseBrazilianNumber(quantity),
+        minQuantity: parseBrazilianNumber(minQuantity),
+        customFieldValues: sanitizedCustom,
       });
       onClose();
     } catch (err: any) {

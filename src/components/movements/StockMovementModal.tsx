@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MovementReason, MovementType, MOVEMENT_REASONS, Product } from '../../types';
 import { calculateNewStock } from '../../services/movementService';
+import { parseBrazilianNumber } from '../../services/productService';
 import { ArrowUpRight, ArrowDownLeft, X, AlertTriangle, Check } from 'lucide-react';
 
 interface StockMovementModalProps {
@@ -45,7 +46,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
 
   if (!isOpen || !product) return null;
 
-  const numericQty = parseFloat(quantity.replace(',', '.')) || 0;
+  const numericQty = parseBrazilianNumber(quantity);
   const { newQuantity, isNegative } = calculateNewStock(product.quantity, numericQty, type);
 
   const handleSubmit = async (e: React.FormEvent) => {

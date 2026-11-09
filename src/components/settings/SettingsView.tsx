@@ -81,7 +81,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         customFields,
       };
 
-      await saveStoreSettings(userId, updated);
+      if (userId && userId !== 'guest') {
+        await saveStoreSettings(userId, updated);
+      }
       onSettingsUpdated(updated);
       setSuccessMessage('Configurações salvas com sucesso!');
       setTimeout(() => setSuccessMessage(''), 4000);
