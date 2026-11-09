@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CustomField, CustomFieldType, StoreSettings } from '../../types';
 import { PRESET_SEGMENTS, saveStoreSettings } from '../../services/settingsService';
-import { Store, Plus, Trash2, CheckCircle2, Layers, AlertCircle } from 'lucide-react';
+import { Store, Plus, Trash2, CheckCircle2, Layers } from 'lucide-react';
 
 interface SettingsViewProps {
   userId: string;

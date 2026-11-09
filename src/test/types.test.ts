@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  Product,
-  StockMovement,
-  StoreSettings,
+  type Product,
   MOVEMENT_REASONS,
   DEFAULT_STORE_SETTINGS
 } from '../types';

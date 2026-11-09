@@ -6,7 +6,6 @@ import {
   Store,
   LogIn,
   LogOut,
-  User as UserIcon,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 

@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import {
   initializeFirestore,
+  getFirestore,
   persistentLocalCache,
   persistentMultipleTabManager
 } from 'firebase/firestore';
@@ -29,8 +30,7 @@ try {
     }),
   });
 } catch {
-  // Fallback for test / node environment where indexedDB persistence might not be supported
-  const { getFirestore } = await import('firebase/firestore');
+  // Fallback for environments where persistentLocalCache is already initialized or not supported
   firestoreDb = getFirestore(app);
 }
 
