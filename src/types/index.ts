@@ -65,3 +65,36 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   activeSegment: 'general',
   customFields: [],
 };
+
+export type DuplicateStrategy = 'sum' | 'overwrite';
+
+export interface DetectedCustomField {
+  id: string;
+  name: string;
+  selected: boolean;
+}
+
+export interface ImportParsedItem {
+  name: string;
+  sku?: string;
+  category?: string;
+  costPrice?: number;
+  salePrice: number;
+  quantity: number;
+  minQuantity: number;
+  customFieldValues: Record<string, any>;
+  warnings: string[];
+  isDuplicate: boolean;
+  existingProductId?: string;
+  previousQuantity?: number;
+}
+
+export interface ImportAnalysisResult {
+  items: ImportParsedItem[];
+  newCustomFields: DetectedCustomField[];
+  totalRows: number;
+  validCount: number;
+  warningCount: number;
+  duplicateCount: number;
+}
+

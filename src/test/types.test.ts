@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   type Product,
+  type DuplicateStrategy,
+  type DetectedCustomField,
+  type ImportParsedItem,
+  type ImportAnalysisResult,
   MOVEMENT_REASONS,
   DEFAULT_STORE_SETTINGS
 } from '../types';
@@ -31,5 +35,35 @@ describe('Domain Types and Constants', () => {
     };
     expect(product.name).toBe('Camisa Polo');
     expect(product.quantity).toBe(10);
+  });
+
+  it('instantiates valid import analysis contracts', () => {
+    const strategy: DuplicateStrategy = 'sum';
+    const field: DetectedCustomField = {
+      id: 'field_material',
+      name: 'Material',
+      selected: true,
+    };
+    const item: ImportParsedItem = {
+      name: 'Camiseta de Algodão',
+      salePrice: 49.9,
+      quantity: 20,
+      minQuantity: 0,
+      customFieldValues: { material: 'Algodão 100%' },
+      warnings: [],
+      isDuplicate: false,
+    };
+    const analysis: ImportAnalysisResult = {
+      items: [item],
+      newCustomFields: [field],
+      totalRows: 1,
+      validCount: 1,
+      warningCount: 0,
+      duplicateCount: 0,
+    };
+
+    expect(strategy).toBe('sum');
+    expect(analysis.totalRows).toBe(1);
+    expect(analysis.newCustomFields[0].name).toBe('Material');
   });
 });
