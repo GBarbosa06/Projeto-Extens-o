@@ -7,6 +7,7 @@ import { MovementHistory } from './components/movements/MovementHistory';
 import { SettingsView } from './components/settings/SettingsView';
 import { ProductFormModal } from './components/products/ProductFormModal';
 import { StockMovementModal } from './components/movements/StockMovementModal';
+import { ImportProductsModal } from './components/products/ImportProductsModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { Product, StockMovement, StoreSettings, DEFAULT_STORE_SETTINGS, MovementType } from './types';
 import { getProducts, saveProduct, deleteProduct } from './services/productService';
@@ -24,6 +25,7 @@ const MainApp: React.FC = () => {
   // Modal states
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
 
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
@@ -201,6 +203,7 @@ const MainApp: React.FC = () => {
               setProductToEdit(null);
               setIsProductModalOpen(true);
             }}
+            onImportProducts={() => setIsImportModalOpen(true)}
             onEditProduct={(prod) => {
               setProductToEdit(prod);
               setIsProductModalOpen(true);
@@ -237,6 +240,15 @@ const MainApp: React.FC = () => {
 
       {/* Modals */}
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+
+      <ImportProductsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={loadData}
+        existingProducts={products}
+        settings={settings}
+        onSettingsUpdated={setSettings}
+      />
 
       <ProductFormModal
         isOpen={isProductModalOpen}

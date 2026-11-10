@@ -10,12 +10,14 @@ import {
   Edit2,
   Trash2,
   PackageSearch,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface ProductListProps {
   products: Product[];
   customFields: CustomField[];
   onAddProduct: () => void;
+  onImportProducts?: () => void;
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onOpenMovement: (product: Product, type: 'IN' | 'OUT') => void;
@@ -25,6 +27,7 @@ export const ProductList: React.FC<ProductListProps> = ({
   products,
   customFields,
   onAddProduct,
+  onImportProducts,
   onEditProduct,
   onDeleteProduct,
   onOpenMovement,
@@ -44,13 +47,24 @@ export const ProductList: React.FC<ProductListProps> = ({
             Gerencie itens, preços e execute movimentações rápidas de estoque.
           </p>
         </div>
-        <button
-          onClick={onAddProduct}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition shadow-sm shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Produto
-        </button>
+        <div className="flex items-center gap-2">
+          {onImportProducts && (
+            <button
+              onClick={onImportProducts}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-xl text-sm transition shadow-sm shrink-0"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              Importar Planilha
+            </button>
+          )}
+          <button
+            onClick={onAddProduct}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition shadow-sm shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Produto
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
