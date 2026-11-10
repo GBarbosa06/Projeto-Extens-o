@@ -72,6 +72,7 @@ export async function parseSpreadsheet(
 
   const sheet = workbook.Sheets[firstSheetName];
   const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
+    raw: false,
     defval: '',
     blankrows: false,
   });
@@ -188,7 +189,7 @@ export function analyzeSpreadsheetData(
     let salePrice: number | undefined = undefined;
     let quantity: number | undefined = undefined;
     let minQuantity = 0;
-    const customFieldValues: Record<string, any> = {};
+    let customFieldValues: Record<string, any> = {};
     const warnings: string[] = [];
 
     rawKeys.forEach((key) => {
@@ -233,7 +234,7 @@ export function analyzeSpreadsheetData(
           // Novo campo customizado potencial
           const fieldName = key.trim();
           const fieldId = `field_${normKey.replace(/[^a-z0-9]/g, '_')}`;
-          customFieldValues[fieldName] = val;
+          customFieldValues[fieldId] = val;
 
           if (!detectedNewFieldsMap.has(fieldId)) {
             detectedNewFieldsMap.set(fieldId, {
@@ -268,20 +269,29 @@ export function analyzeSpreadsheetData(
     const trimmedSku = sku.trim();
     const trimmedName = name.trim();
 
+    let existingProductMatch: Product | undefined = undefined;
     if (trimmedSku && productBySku.has(trimmedSku.toLowerCase())) {
-      const match = productBySku.get(trimmedSku.toLowerCase())!;
-      isDuplicate = true;
-      existingProductId = match.id;
-      previousQuantity = match.quantity;
+      existingProductMatch = productBySku.get(trimmedSku.toLowerCase());
     } else if (trimmedName && productByName.has(trimmedName.toLowerCase())) {
-      const match = productByName.get(trimmedName.toLowerCase())!;
+      existingProductMatch = productByName.get(trimmedName.toLowerCase());
+    }
+
+    if (existingProductMatch) {
       isDuplicate = true;
-      existingProductId = match.id;
-      previousQuantity = match.quantity;
+      existingProductId = existingProductMatch.id;
+      previousQuantity = existingProductMatch.quantity;
+      // Merge seguro: preserva campos customizados pré-existentes caso a planilha não os traga
+      customFieldValues = {
+        ...(existingProductMatch.customFieldValues || {}),
+        ...customFieldValues,
+      };
     }
 
     // Identificação de duplicados dentro do próprio arquivo
-    const intraFileKey = trimmedSku ? `sku:${trimmedSku.toLowerCase()}` : `name:${trimmedName.toLowerCase()}`;
+    const intraFileKey = existingProductId
+      ? `id:${existingProductId}`
+      : (trimmedSku ? `sku:${trimmedSku.toLowerCase()}` : `name:${trimmedName.toLowerCase()}`);
+
     if (intraFileMap.has(intraFileKey)) {
       const existingItemIndex = intraFileMap.get(intraFileKey)!;
       const prevItem = items[existingItemIndex];
@@ -381,7 +391,21 @@ export function generateImportOperations(
   }
 
   // 2. Operações de produtos e movimentações
+  const allowedFieldIds = new Set<string>();
+  if (currentSettings) {
+    currentSettings.customFields.forEach((f) => allowedFieldIds.add(f.id));
+  }
+  approvedFields.forEach((f) => allowedFieldIds.add(f.id));
+
   analysis.items.forEach((item, index) => {
+    // Filtra campos customizados removendo os que foram desmarcados pelo usuário
+    const filteredCustomFieldValues: Record<string, any> = {};
+    Object.entries(item.customFieldValues).forEach(([k, v]) => {
+      if (allowedFieldIds.has(k) || allowedFieldIds.size === 0) {
+        filteredCustomFieldValues[k] = v;
+      }
+    });
+
     if (item.isDuplicate && item.existingProductId) {
       const prevQty = item.previousQuantity ?? 0;
       let newQty = item.quantity;
@@ -405,8 +429,8 @@ export function generateImportOperations(
           ...(item.costPrice !== undefined ? { costPrice: item.costPrice } : {}),
           ...(item.category ? { category: item.category } : {}),
           ...(item.sku ? { sku: item.sku } : {}),
-          ...(Object.keys(item.customFieldValues).length > 0
-            ? { customFieldValues: item.customFieldValues }
+          ...(Object.keys(filteredCustomFieldValues).length > 0
+            ? { customFieldValues: filteredCustomFieldValues }
             : {}),
         },
       });
@@ -461,7 +485,7 @@ export function generateImportOperations(
           salePrice: item.salePrice,
           quantity: item.quantity,
           minQuantity: item.minQuantity,
-          customFieldValues: item.customFieldValues,
+          customFieldValues: filteredCustomFieldValues,
           createdAt: now,
           updatedAt: now,
         },
@@ -514,8 +538,7 @@ export async function executeImportBatch(
     const batch = writeBatch(db);
 
     chunk.forEach((op) => {
-      const parts = op.refPath.split('/');
-      const targetDocRef = doc(db, parts[0], parts[1], parts[2], parts[3]);
+      const targetDocRef = doc(db, op.refPath);
 
       if (op.type === 'settings' || op.type === 'product_set' || op.type === 'movement') {
         batch.set(targetDocRef, op.data, { merge: true });

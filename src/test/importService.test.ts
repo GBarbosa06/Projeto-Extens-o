@@ -83,7 +83,7 @@ describe('importService - Spreadsheet Analysis and Parsing', () => {
       expect(result.items[0].isDuplicate).toBe(false);
     });
 
-    it('detects unknown columns as new custom fields and maps values', () => {
+    it('detects unknown columns as new custom fields and maps values by fieldId', () => {
       const rows = [
         {
           Nome: 'Camiseta Algodão',
@@ -98,10 +98,10 @@ describe('importService - Spreadsheet Analysis and Parsing', () => {
       const result = analyzeSpreadsheetData(rows, existingProducts, existingCustomFields);
 
       // 'Tamanho' is already in existingCustomFields, so it is mapped to customFieldValues without being in newCustomFields
-      // 'Material' and 'Cor' are unknown, so they must be in newCustomFields
+      // 'Material' and 'Cor' are unknown, so they must be in newCustomFields and keyed by fieldId (e.g. field_material)
       expect(result.items[0].customFieldValues['field_tamanho']).toBe('G');
-      expect(result.items[0].customFieldValues['Material']).toBe('100% Algodão');
-      expect(result.items[0].customFieldValues['Cor']).toBe('Azul Marinho');
+      expect(result.items[0].customFieldValues['field_material']).toBe('100% Algodão');
+      expect(result.items[0].customFieldValues['field_cor']).toBe('Azul Marinho');
 
       const newFieldNames = result.newCustomFields.map((f) => f.name);
       expect(newFieldNames).toContain('Material');
@@ -175,6 +175,47 @@ describe('importService - Spreadsheet Analysis and Parsing', () => {
       expect(result.items.length).toBe(1);
       expect(result.items[0].quantity).toBe(15);
       expect(result.items[0].warnings).toContain('Linha consolidada: produto duplicado na própria planilha.');
+    });
+
+    it('consolidates intra-file duplicates when one row has SKU and another has only matching Name', () => {
+      // Row 1 has SKU VEST-01, Row 2 has no SKU but same Name 'Vestido Floral'
+      const rows = [
+        {
+          Nome: 'Vestido Floral',
+          Código: 'VEST-01',
+          Preço: '120,00',
+          Qtd: '2',
+        },
+        {
+          Nome: 'Vestido Floral',
+          Preço: '120,00',
+          Qtd: '3',
+        },
+      ];
+
+      const result = analyzeSpreadsheetData(rows, existingProducts, existingCustomFields);
+
+      expect(result.items.length).toBe(1);
+      expect(result.items[0].quantity).toBe(5);
+      expect(result.items[0].isDuplicate).toBe(true);
+      expect(result.items[0].existingProductId).toBe('p-1');
+    });
+  });
+
+  describe('parseSpreadsheet', () => {
+    it('correctly reads CSV buffer with Brazilian decimal comma and semicolons without multiplying by 100', async () => {
+      const { parseSpreadsheet } = await import('../services/importService');
+      const csvContent = 'Produto;Preço;Quantidade\nCalça Jeans;120,50;10\n';
+      const encoder = new TextEncoder();
+      const buffer = encoder.encode(csvContent).buffer;
+
+      const rows = await parseSpreadsheet(buffer);
+      expect(rows.length).toBe(1);
+      expect(rows[0]['Produto']).toBe('Calça Jeans');
+
+      const analysis = analyzeSpreadsheetData(rows, [], []);
+      expect(analysis.items[0].salePrice).toBe(120.5);
+      expect(analysis.items[0].quantity).toBe(10);
     });
   });
 
@@ -271,6 +312,47 @@ describe('importService - Spreadsheet Analysis and Parsing', () => {
       expect(movement?.data.type).toBe('OUT');
       expect(movement?.data.quantity).toBe(4);
       expect(movement?.data.reason).toBe('ADJUSTMENT');
+    });
+
+    it('filters out unselected custom fields from product customFieldValues', async () => {
+      const { generateImportOperations } = await import('../services/importService');
+
+      const analysis = {
+        items: [
+          {
+            name: 'Produto Com Campos Extras',
+            salePrice: 100,
+            quantity: 5,
+            minQuantity: 0,
+            customFieldValues: {
+              field_material: 'Couro Legítimo',
+              field_obs: 'Observação Interna Descartada',
+            },
+            warnings: [],
+            isDuplicate: false,
+          },
+        ],
+        newCustomFields: [
+          { id: 'field_material', name: 'Material', selected: true },
+          { id: 'field_obs', name: 'Observação', selected: false }, // Usuário desmarcou
+        ],
+        totalRows: 1,
+        validCount: 1,
+        warningCount: 0,
+        duplicateCount: 0,
+      };
+
+      const ops = generateImportOperations('user-123', analysis, 'sum', analysis.newCustomFields, {
+        storeName: 'Loja',
+        currency: 'BRL',
+        activeSegment: 'general',
+        customFields: [],
+      });
+
+      const productOp = ops.find((op) => op.type === 'product_set');
+      expect(productOp).toBeDefined();
+      expect(productOp?.data.customFieldValues.field_material).toBe('Couro Legítimo');
+      expect(productOp?.data.customFieldValues.field_obs).toBeUndefined();
     });
   });
 });

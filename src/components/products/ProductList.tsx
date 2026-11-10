@@ -128,13 +128,24 @@ export const ProductList: React.FC<ProductListProps> = ({
               : 'Nenhum item corresponde ao termo pesquisado ou filtro selecionado.'}
           </p>
           {products.length === 0 && (
-            <button
-              onClick={onAddProduct}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition"
-            >
-              <Plus className="w-4 h-4" />
-              Cadastrar Primeiro Produto
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={onAddProduct}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm transition"
+              >
+                <Plus className="w-4 h-4" />
+                Cadastrar Primeiro Produto
+              </button>
+              {onImportProducts && (
+                <button
+                  onClick={onImportProducts}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-xl text-sm transition"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  Importar Planilha
+                </button>
+              )}
+            </div>
           )}
         </div>
       ) : (
