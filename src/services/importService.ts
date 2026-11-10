@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx';
+import { doc, writeBatch } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import type {
   Product,
   CustomField,
@@ -6,6 +8,7 @@ import type {
   DetectedCustomField,
   ImportAnalysisResult,
   DuplicateStrategy,
+  StoreSettings,
 } from '../types';
 
 /**
@@ -179,8 +182,8 @@ export function analyzeSpreadsheetData(
     if (rawKeys.length === 0) return;
 
     let name = '';
-    let sku: string | undefined = undefined;
-    let category: string | undefined = undefined;
+    let sku = '';
+    let category = '';
     let costPrice: number | undefined = undefined;
     let salePrice: number | undefined = undefined;
     let quantity: number | undefined = undefined;
@@ -262,20 +265,23 @@ export function analyzeSpreadsheetData(
     let existingProductId: string | undefined = undefined;
     let previousQuantity: number | undefined = undefined;
 
-    if (sku && productBySku.has(sku.toLowerCase())) {
-      const match = productBySku.get(sku.toLowerCase())!;
+    const trimmedSku = sku.trim();
+    const trimmedName = name.trim();
+
+    if (trimmedSku && productBySku.has(trimmedSku.toLowerCase())) {
+      const match = productBySku.get(trimmedSku.toLowerCase())!;
       isDuplicate = true;
       existingProductId = match.id;
       previousQuantity = match.quantity;
-    } else if (name && productByName.has(name.toLowerCase())) {
-      const match = productByName.get(name.toLowerCase())!;
+    } else if (trimmedName && productByName.has(trimmedName.toLowerCase())) {
+      const match = productByName.get(trimmedName.toLowerCase())!;
       isDuplicate = true;
       existingProductId = match.id;
       previousQuantity = match.quantity;
     }
 
     // Identificação de duplicados dentro do próprio arquivo
-    const intraFileKey = (sku ? `sku:${sku.toLowerCase()}` : `name:${name.toLowerCase()}`);
+    const intraFileKey = trimmedSku ? `sku:${trimmedSku.toLowerCase()}` : `name:${trimmedName.toLowerCase()}`;
     if (intraFileMap.has(intraFileKey)) {
       const existingItemIndex = intraFileMap.get(intraFileKey)!;
       const prevItem = items[existingItemIndex];
@@ -290,8 +296,8 @@ export function analyzeSpreadsheetData(
 
     items.push({
       name,
-      sku,
-      category,
+      ...(trimmedSku ? { sku: trimmedSku } : {}),
+      ...(category ? { category } : {}),
       costPrice,
       salePrice,
       quantity,
@@ -317,3 +323,210 @@ export function analyzeSpreadsheetData(
     duplicateCount,
   };
 }
+
+export interface ImportOperation {
+  type: 'settings' | 'product_set' | 'product_update' | 'movement';
+  refPath: string;
+  data: any;
+}
+
+/**
+ * Constrói a lista estruturada de operações para gravação no Firestore
+ */
+export function generateImportOperations(
+  userId: string,
+  analysis: ImportAnalysisResult,
+  duplicateStrategy: DuplicateStrategy,
+  selectedNewFields: DetectedCustomField[],
+  currentSettings?: StoreSettings
+): ImportOperation[] {
+  const operations: ImportOperation[] = [];
+  const now = new Date().toISOString();
+
+  // 1. Atualização de StoreSettings se novos campos foram aprovados
+  const approvedFields = selectedNewFields.filter((f) => f.selected);
+  if (approvedFields.length > 0 && currentSettings) {
+    const existingFieldIds = new Set(currentSettings.customFields.map((f) => f.id));
+    const fieldsToAdd: CustomField[] = approvedFields
+      .filter((f) => !existingFieldIds.has(f.id))
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: 'text',
+      }));
+
+    if (fieldsToAdd.length > 0) {
+      operations.push({
+        type: 'settings',
+        refPath: `users/${userId}/settings/general`,
+        data: {
+          ...currentSettings,
+          customFields: [...currentSettings.customFields, ...fieldsToAdd],
+        },
+      });
+    }
+  } else if (approvedFields.length > 0) {
+    // Se settings não foram passadas, cria operação parcial
+    operations.push({
+      type: 'settings',
+      refPath: `users/${userId}/settings/general`,
+      data: {
+        customFields: approvedFields.map((f) => ({
+          id: f.id,
+          name: f.name,
+          type: 'text',
+        })),
+      },
+    });
+  }
+
+  // 2. Operações de produtos e movimentações
+  analysis.items.forEach((item, index) => {
+    if (item.isDuplicate && item.existingProductId) {
+      const prevQty = item.previousQuantity ?? 0;
+      let newQty = item.quantity;
+      let delta = 0;
+
+      if (duplicateStrategy === 'sum') {
+        newQty = prevQty + item.quantity;
+        delta = item.quantity;
+      } else {
+        newQty = item.quantity;
+        delta = newQty - prevQty;
+      }
+
+      operations.push({
+        type: 'product_update',
+        refPath: `users/${userId}/products/${item.existingProductId}`,
+        data: {
+          quantity: newQty,
+          salePrice: item.salePrice,
+          updatedAt: now,
+          ...(item.costPrice !== undefined ? { costPrice: item.costPrice } : {}),
+          ...(item.category ? { category: item.category } : {}),
+          ...(item.sku ? { sku: item.sku } : {}),
+          ...(Object.keys(item.customFieldValues).length > 0
+            ? { customFieldValues: item.customFieldValues }
+            : {}),
+        },
+      });
+
+      // Movimentação decorrente de duplicado
+      if (duplicateStrategy === 'sum' && delta > 0) {
+        operations.push({
+          type: 'movement',
+          refPath: `users/${userId}/movements/mov_dup_${item.existingProductId}_${index}`,
+          data: {
+            productId: item.existingProductId,
+            productName: item.name,
+            type: 'IN',
+            quantity: delta,
+            reason: 'REPLENISHMENT',
+            notes: 'Importação de planilha (adição de saldo)',
+            previousQuantity: prevQty,
+            newQuantity: newQty,
+            createdAt: now,
+          },
+        });
+      } else if (duplicateStrategy === 'overwrite' && delta !== 0) {
+        const movType = delta > 0 ? 'IN' : 'OUT';
+        operations.push({
+          type: 'movement',
+          refPath: `users/${userId}/movements/mov_dup_${item.existingProductId}_${index}`,
+          data: {
+            productId: item.existingProductId,
+            productName: item.name,
+            type: movType,
+            quantity: Math.abs(delta),
+            reason: 'ADJUSTMENT',
+            notes: 'Importação de planilha (ajuste de saldo)',
+            previousQuantity: prevQty,
+            newQuantity: newQty,
+            createdAt: now,
+          },
+        });
+      }
+    } else {
+      // Novo produto
+      const newProductId = `prod_imp_${Date.now()}_${index}`;
+      operations.push({
+        type: 'product_set',
+        refPath: `users/${userId}/products/${newProductId}`,
+        data: {
+          id: newProductId,
+          name: item.name,
+          sku: item.sku || '',
+          category: item.category || 'Geral',
+          costPrice: item.costPrice || 0,
+          salePrice: item.salePrice,
+          quantity: item.quantity,
+          minQuantity: item.minQuantity,
+          customFieldValues: item.customFieldValues,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+
+      if (item.quantity > 0) {
+        operations.push({
+          type: 'movement',
+          refPath: `users/${userId}/movements/mov_${newProductId}`,
+          data: {
+            productId: newProductId,
+            productName: item.name,
+            type: 'IN',
+            quantity: item.quantity,
+            reason: 'ADJUSTMENT',
+            notes: 'Carga inicial via importação de planilha',
+            previousQuantity: 0,
+            newQuantity: item.quantity,
+            createdAt: now,
+          },
+        });
+      }
+    }
+  });
+
+  return operations;
+}
+
+/**
+ * Executa a gravação em lotes protegidos de até 200 operações no Firestore
+ */
+export async function executeImportBatch(
+  userId: string,
+  analysis: ImportAnalysisResult,
+  duplicateStrategy: DuplicateStrategy,
+  selectedNewFields: DetectedCustomField[],
+  currentSettings?: StoreSettings
+): Promise<{ importedCount: number }> {
+  const operations = generateImportOperations(
+    userId,
+    analysis,
+    duplicateStrategy,
+    selectedNewFields,
+    currentSettings
+  );
+
+  const CHUNK_SIZE = 200;
+  for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+    const chunk = operations.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+
+    chunk.forEach((op) => {
+      const parts = op.refPath.split('/');
+      const targetDocRef = doc(db, parts[0], parts[1], parts[2], parts[3]);
+
+      if (op.type === 'settings' || op.type === 'product_set' || op.type === 'movement') {
+        batch.set(targetDocRef, op.data, { merge: true });
+      } else if (op.type === 'product_update') {
+        batch.update(targetDocRef, op.data);
+      }
+    });
+
+    await batch.commit();
+  }
+
+  return { importedCount: analysis.items.length };
+}
+

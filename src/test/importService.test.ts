@@ -177,4 +177,100 @@ describe('importService - Spreadsheet Analysis and Parsing', () => {
       expect(result.items[0].warnings).toContain('Linha consolidada: produto duplicado na própria planilha.');
     });
   });
+
+  describe('executeImportBatch batch builder and persistence', () => {
+    it('generates correct operations for new and duplicate products', async () => {
+      const { generateImportOperations } = await import('../services/importService');
+
+      const analysis = {
+        items: [
+          {
+            name: 'Produto Novo 1',
+            salePrice: 50,
+            quantity: 10,
+            minQuantity: 0,
+            customFieldValues: {},
+            warnings: [],
+            isDuplicate: false,
+          },
+          {
+            name: 'Produto Zerado',
+            salePrice: 20,
+            quantity: 0,
+            minQuantity: 0,
+            customFieldValues: {},
+            warnings: [],
+            isDuplicate: false,
+          },
+          {
+            name: 'Produto Existente',
+            isDuplicate: true,
+            existingProductId: 'p-1',
+            previousQuantity: 5,
+            quantity: 8,
+            salePrice: 60,
+            minQuantity: 0,
+            customFieldValues: {},
+            warnings: [],
+          },
+        ],
+        newCustomFields: [
+          { id: 'field_material', name: 'Material', selected: true },
+        ],
+        totalRows: 3,
+        validCount: 3,
+        warningCount: 0,
+        duplicateCount: 1,
+      };
+
+      const ops = generateImportOperations('user-123', analysis, 'sum', analysis.newCustomFields);
+
+      // Total operations:
+      // 1. Settings update for new custom fields (1 op)
+      // 2. Produto Novo 1: 1 set product + 1 movement (quantity > 0) -> 2 ops
+      // 3. Produto Zerado: 1 set product + 0 movement (quantity = 0) -> 1 op
+      // 4. Produto Existente (sum): 1 update product + 1 movement (delta 8) -> 2 ops
+      // Total = 6 operations
+      expect(ops.length).toBe(6);
+      expect(ops.some((op) => op.type === 'settings')).toBe(true);
+
+      const movements = ops.filter((op) => op.type === 'movement');
+      expect(movements.length).toBe(2);
+      expect(movements[0].data.quantity).toBe(10);
+      expect(movements[1].data.quantity).toBe(8);
+    });
+
+    it('generates correct delta movements on overwrite duplicate strategy', async () => {
+      const { generateImportOperations } = await import('../services/importService');
+
+      const analysis = {
+        items: [
+          {
+            name: 'Produto Existente Reduzido',
+            isDuplicate: true,
+            existingProductId: 'p-2',
+            previousQuantity: 10,
+            quantity: 6, // Reduziu 4 unidades
+            salePrice: 60,
+            minQuantity: 0,
+            customFieldValues: {},
+            warnings: [],
+          },
+        ],
+        newCustomFields: [],
+        totalRows: 1,
+        validCount: 1,
+        warningCount: 0,
+        duplicateCount: 1,
+      };
+
+      const ops = generateImportOperations('user-123', analysis, 'overwrite', []);
+
+      const movement = ops.find((op) => op.type === 'movement');
+      expect(movement).toBeDefined();
+      expect(movement?.data.type).toBe('OUT');
+      expect(movement?.data.quantity).toBe(4);
+      expect(movement?.data.reason).toBe('ADJUSTMENT');
+    });
+  });
 });
