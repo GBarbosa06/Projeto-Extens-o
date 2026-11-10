@@ -102,15 +102,31 @@ O serviço `importService.ts` conterá dicionários de sinônimos para os campos
 * `category`: "categoria", "departamento", "seção", "grupo".
 * `minQuantity`: "mínimo", "minimo", "estoque mínimo", "estoque minimo".
 
-Colunas restantes não mapeadas para campos padrão serão verificadas contra [StoreSettings.customFields](file:///C:/Users/User/Documents/GitHub/Projeto-Extensão/src/types/index.ts#L11-L16). Se não existirem, serão classificadas como `newCustomFields` a serem adicionadas automaticamente como campos do tipo `text`.
+Colunas restantes não mapeadas para campos padrão serão verificadas contra [StoreSettings.customFields](file:///C:/Users/User/Documents/GitHub/Projeto-Extensão/src/types/index.ts#L11-L16). Se não existirem, serão classificadas como `newCustomFields`. No modal de prévia, elas serão apresentadas em uma lista com *checkboxes* pré-marcados por padrão, permitindo que a empreendedora desmarque facilmente qualquer coluna descartável antes da gravação.
 
-### 5.3. Normalização e Fallbacks
+### 5.3. Normalização, Fallbacks e Tratamento de Duplicados
 * **Valores Monetários e Numéricos:** Tratamento de formatação brasileira (ex: `"R$ 1.250,50"` ou `"15,00"` convertidos para número `1250.5` e `15.0`).
 * **Campos Obrigatórios:**
   * Se `name` estiver vazio: `Produto sem nome (Linha X)`.
   * Se `salePrice` for inválido ou ausente: `0.00`.
   * Se `quantity` for inválido ou ausente: `0`.
 * Cada linha tratada com fallback é sinalizada com um indicador de aviso visual no modal de prévia.
+* **Opção Padrão de Duplicados:** No modal de confirmação, a opção **"Somar ao estoque atual"** virá selecionada por padrão, com seletor interativo permitindo alternar para **"Substituir pelo saldo da planilha"** conforme a necessidade da operação.
+
+### 5.4. Regras de Correspondência e Lógica Transacional (Decisões do Construtor)
+1. **Critério de Identificação de Duplicados:**
+   * Se a linha possuir `sku` preenchido: busca por correspondência exata de `sku`.
+   * Se o `sku` estiver ausente ou vazio: busca por `name` (correspondência insensível a maiúsculas/minúsculas e espaços extras).
+   * Linhas duplicadas dentro do próprio arquivo são consolidadas na fase de prévia (somando quantidades e alertando o usuário).
+2. **Preservação de Dados (Merge Parcial Seguro):**
+   * Ao atualizar produtos existentes, o sistema realiza merge seguro: dados já existentes (como categorias ou campos customizados antigos) são preservados caso a planilha não os informe.
+3. **Histórico de Movimentações (`StockMovement`):**
+   * Produtos novos com `quantity > 0`: geram movimentação `IN` com motivo `ADJUSTMENT` ("Carga Inicial / Importação").
+   * Produtos com `quantity: 0`: não geram movimentação de estoque.
+   * Produtos duplicados: geram movimentação correspondente ao delta resultante (ex: se o saldo aumentou, `IN`; se diminuiu na substituição, `OUT` por `ADJUSTMENT`).
+4. **Dimensionamento de Lotes no Firestore:**
+   * Como cada produto novo ou alterado pode gerar 2 operações de escrita (1 produto + 1 movimentação), o tamanho de lote no `writeBatch` é limitado com folga a 200 produtos por lote (máximo 400 operações, bem abaixo do limite de 500 do Firebase).
+
 
 ---
 
